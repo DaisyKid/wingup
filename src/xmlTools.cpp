@@ -193,6 +193,9 @@ GupDownloadInfo::GupDownloadInfo(const char * xmlString) : _updateVersion(""), _
 	if (!root)
 		throw exception("It's not a valid GUP xml.");
 
+	//
+	// Get NeedToBeUpdated
+	//
 	TiXmlNode *needUpdateNode = root->FirstChildElement("NeedToBeUpdated");
 	if (!needUpdateNode)
 		throw exception("NeedToBeUpdated node is missed.");
@@ -212,7 +215,30 @@ GupDownloadInfo::GupDownloadInfo(const char * xmlString) : _updateVersion(""), _
 	else
 		throw exception("NeedToBeUpdated value is incorrect (only \"yes\" or \"no\" is allowed).");
 
-	if (_need2BeUpdated)
+	//
+	// Get NeedToBeForceUpdated
+	//
+	
+	TiXmlNode* needForceUpdateNode = root->FirstChildElement("NeedToBeForceUpdated");
+	if (!needForceUpdateNode)
+		throw exception("NeedToBeForceUpdated node is missed.");
+
+	TiXmlNode* nfun = needForceUpdateNode->FirstChild();
+	if (!nfun)
+		throw exception("NeedToBeForceUpdated is missed.");
+
+	const char* nfunVal = nfun->Value();
+	if (!nfunVal || !(*nfunVal))
+		throw exception("NeedToBeForceUpdated is missed.");
+
+	if (stricmp(nfunVal, "yes") == 0)
+		_need2BeForceUpdated = true;
+	else if (stricmp(nfunVal, "no") == 0)
+		_need2BeForceUpdated = false;
+	else
+		throw exception("NeedToBeForceUpdated value is incorrect (only \"yes\" or \"no\" is allowed).");
+
+	if (_need2BeUpdated || _need2BeForceUpdated)
 	{
 		//
 		// Get mandatory parameters

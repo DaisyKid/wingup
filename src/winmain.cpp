@@ -550,7 +550,7 @@ bool getUpdateInfo(string &info2get, const GupParameters& gupParams, const GupEx
 	return true;
 }
 
-bool runInstaller(const string& app2runPath, const string& binWindowsClassName, const string& closeMsg, const string& closeMsgTitle)
+bool runInstaller(const string& app2runPath, const string& binWindowsClassName, const string& closeMsg, const string& closeMsgTitle, bool force = false)
 {
 
 	if (!binWindowsClassName.empty())
@@ -559,11 +559,19 @@ bool runInstaller(const string& app2runPath, const string& binWindowsClassName, 
 
 		if (h)
 		{
-			int installAnswer = ::MessageBoxA(NULL, closeMsg.c_str(), closeMsgTitle.c_str(), MB_YESNO);
-
-			if (installAnswer == IDNO)
+			if (force)
 			{
-				return 0;
+				string forceCloseMsg = " is opened.\rUpdater will close it in order to process the installation.";
+				::MessageBoxA(NULL, forceCloseMsg.c_str(), closeMsgTitle.c_str(), MB_OK);
+			}
+			else
+			{
+				int installAnswer = ::MessageBoxA(NULL, closeMsg.c_str(), closeMsgTitle.c_str(), MB_YESNO);
+
+				if (installAnswer == IDNO)
+				{
+					return 0;
+				}
 			}
 		}
 
@@ -584,6 +592,21 @@ bool runInstaller(const string& app2runPath, const string& binWindowsClassName, 
 	}
 
 	return true;
+}
+
+void exitBinWindows(const string& binWindowsClassName)
+{
+	if (!binWindowsClassName.empty())
+	{
+		HWND h = ::FindWindowExA(NULL, NULL, binWindowsClassName.c_str(), NULL);
+
+		// kill all process of binary needs to be updated.
+		while (h)
+		{
+			::SendMessage(h, WM_CLOSE, 0, 0);
+			h = ::FindWindowExA(NULL, NULL, binWindowsClassName.c_str(), NULL);
+		}
+	}
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
@@ -662,7 +685,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		GupDownloadInfo gupDlInfo(updateInfo.c_str());
 
-		if (!gupDlInfo.doesNeed2BeUpdated())
+		bool need2BeUpdated = gupDlInfo.doesNeed2BeUpdated();
+		bool need2BeForceUpdated = gupDlInfo.doesNeed2BeForceUpdated();
+
+		if (!need2BeUpdated && !need2BeForceUpdated)
 		{
 			if (!isSilentMode)
 			{
@@ -679,40 +705,49 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		// Process Update Info
 		//
 
-		// Ask user if he/she want to do update
-		string updateAvailable = nativeLang.getMessageString("MSGID_UPDATEAVAILABLE");
-		if (updateAvailable == "")
-			updateAvailable = MSGID_UPDATEAVAILABLE;
-		
-		int thirdButtonCmd = gupParams.get3rdButtonCmd();
-		thirdDoUpdateDlgButtonLabel = gupParams.get3rdButtonLabel();
-
-		int dlAnswer = 0;
-		HWND hApp = ::FindWindowExA(NULL, NULL, gupParams.getClassName().c_str(), NULL);
-		bool isModal = gupParams.isMessageBoxModal();
-
-		if (!thirdButtonCmd)
-			dlAnswer = ::MessageBoxA(isModal ? hApp : NULL, updateAvailable.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_YESNO);
-		else
-			dlAnswer = static_cast<int32_t>(::DialogBox(hInst, MAKEINTRESOURCE(IDD_YESNONEVERDLG), isModal ? hApp : NULL, reinterpret_cast<DLGPROC>(yesNoNeverDlgProc)));
-
-		if (dlAnswer == IDNO)
+		if (need2BeForceUpdated)
 		{
-			return 0;
+			// Force to update and pop a box to notify
+			string forceUpdate = "A mandatory update is detected. Do not interrupt the upgrade process, or the program will exit.";
+			::MessageBoxA(NULL, forceUpdate.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
 		}
-		
-		if (dlAnswer == IDCANCEL)
+		else if (need2BeUpdated)
 		{
-			if (gupParams.getClassName() != "")
+			// Ask user if he/she want to do update
+			string updateAvailable = nativeLang.getMessageString("MSGID_UPDATEAVAILABLE");
+			if (updateAvailable == "")
+				updateAvailable = MSGID_UPDATEAVAILABLE;
+
+			int thirdButtonCmd = gupParams.get3rdButtonCmd();
+			thirdDoUpdateDlgButtonLabel = gupParams.get3rdButtonLabel();
+
+			int dlAnswer = 0;
+			HWND hApp = ::FindWindowExA(NULL, NULL, gupParams.getClassName().c_str(), NULL);
+			bool isModal = gupParams.isMessageBoxModal();
+
+			if (!thirdButtonCmd)
+				dlAnswer = ::MessageBoxA(isModal ? hApp : NULL, updateAvailable.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_YESNO);
+			else
+				dlAnswer = static_cast<int32_t>(::DialogBox(hInst, MAKEINTRESOURCE(IDD_YESNONEVERDLG), isModal ? hApp : NULL, reinterpret_cast<DLGPROC>(yesNoNeverDlgProc)));
+
+			if (dlAnswer == IDNO)
 			{
-				if (hApp)
-				{
-					::SendMessage(hApp, thirdButtonCmd, gupParams.get3rdButtonWparam(), gupParams.get3rdButtonLparam());
-				}
+				return 0;
 			}
-			return 0;
-		}
 
+			if (dlAnswer == IDCANCEL)
+			{
+				if (gupParams.getClassName() != "")
+				{
+					if (hApp)
+					{
+						::SendMessage(hApp, thirdButtonCmd, gupParams.get3rdButtonWparam(), gupParams.get3rdButtonLparam());
+					}
+				}
+				return 0;
+			}
+		}
+		
 		//
 		// Download executable bin
 		//
@@ -736,7 +771,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		bool dlSuccessful = downloadBinary(gupDlInfo.getDownloadLocation(), dlDest, pair<string, int>(extraOptions.getProxyServer(), extraOptions.getPort()), isSilentMode, pair<string, string>(dlStopped, gupParams.getMessageBoxTitle()));
 
 		if (!dlSuccessful)
+		{
+			if (need2BeForceUpdated)
+			{
+				exitBinWindows(gupParams.getClassName());
+			}
 			return -1;
+		}
 
 
 		//
@@ -748,7 +789,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 			closeApp = MSGID_CLOSEAPP;
 		msg += closeApp;
 
-		runInstaller(dlDest, gupParams.getClassName(), msg, gupParams.getMessageBoxTitle().c_str());
+		bool installSuccessful = runInstaller(dlDest, gupParams.getClassName(), msg, gupParams.getMessageBoxTitle().c_str(), need2BeForceUpdated);
+
+		if (!installSuccessful)
+		{
+			exitBinWindows(gupParams.getClassName());
+			return -1;
+		}
 
 		return 0;
 

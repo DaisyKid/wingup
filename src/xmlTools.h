@@ -91,9 +91,11 @@ public:
 	const std::string & getVersion() const { return _updateVersion;};
 	const std::string & getDownloadLocation() const {return _updateLocation;};
 	bool doesNeed2BeUpdated() const {return _need2BeUpdated;};
+	bool doesNeed2BeForceUpdated() const { return _need2BeForceUpdated; };
 
 private:
 	bool _need2BeUpdated;
+	bool _need2BeForceUpdated;
 	std::string _updateVersion;
 	std::string _updateLocation;
 };
