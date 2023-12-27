@@ -5,6 +5,11 @@
 	-->
 	<NeedToBeUpdated>yes</NeedToBeUpdated>
 	
+	<!-- Mandatory. 
+	This parameter tell WinGup if the program (on the client side) is need to be force updated (regarding to its provided current version).
+	-->
+	<NeedToBeForceUpdated>yes</NeedToBeForceUpdated>
+	
 	<!-- Mandatory if NeedToBeUpdated value is yes.
 	This parameter indicates the update package's version.
 	-->
@@ -13,5 +18,5 @@
 	<!-- Mandatory if NeedToBeUpdated value is yes.
 	This parameter provides the download location of update package.
 	-->
-	<Location>http://sourceforge.net/project/download/npp.4.7.Installer.exe</Location>
+	<Location>http://121.40.148.40:8080/setup</Location>
 </GUP>
