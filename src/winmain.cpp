@@ -71,6 +71,8 @@ gup [-verbose] [-vVERSION_VALUE] [-pCUSTOM_PARAM]\r\
 
 std::string thirdDoUpdateDlgButtonLabel;
 
+static const UINT_PTR IDM_UPDATE_CHECK_MESSAGE = 1002;
+
 class CUXHelper
 {
 public:
@@ -609,6 +611,30 @@ void exitBinWindows(const string& binWindowsClassName)
 	}
 }
 
+void sendMessageToBin(const string& binWindowsClassName, const string& strData)
+{
+	if (!binWindowsClassName.empty())
+	{
+		HWND hWnd = ::FindWindowExA(NULL, NULL, binWindowsClassName.c_str(), NULL);
+
+		// notify the process of binary to update
+		if (hWnd)
+		{
+			char* buffer = new char[strData.size() + 1];
+			strcpy_s(buffer, strData.size() + 1, strData.c_str());
+
+			COPYDATASTRUCT cds;
+			cds.dwData = IDM_UPDATE_CHECK_MESSAGE;
+			cds.cbData = static_cast<DWORD>(strData.size() + 1);
+			cds.lpData = static_cast<PVOID>(buffer);
+
+			::SendMessage(hWnd, WM_COPYDATA, NULL, (LPARAM)&cds);
+
+			delete[] buffer;
+		}
+	}
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 {
 	bool isSilentMode = false;
@@ -680,8 +706,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		bool getUpdateInfoSuccessful = getUpdateInfo(updateInfo, gupParams, extraOptions, customParam, version);
 
 		if (!getUpdateInfoSuccessful)
+		{
+			string getUpdateInfoFail = "Get the update info fails so exit the main program.";
+			::MessageBoxA(NULL, getUpdateInfoFail.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
+
+			exitBinWindows(gupParams.getClassName());
 			return -1;
-		
+		}
 
 		GupDownloadInfo gupDlInfo(updateInfo.c_str());
 
@@ -707,6 +738,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (need2BeForceUpdated)
 		{
+			sendMessageToBin(gupParams.getClassName(), "Lock");
+
 			// Force to update and pop a box to notify
 			string forceUpdate = "A mandatory update is detected. Do not interrupt the upgrade process, or the program will exit.";
 			::MessageBoxA(NULL, forceUpdate.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
@@ -793,8 +826,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (!installSuccessful)
 		{
-			exitBinWindows(gupParams.getClassName());
+			if (need2BeForceUpdated)
+			{
+				exitBinWindows(gupParams.getClassName());
+			}
 			return -1;
+		}
+
+		if (need2BeForceUpdated)
+		{
+			sendMessageToBin(gupParams.getClassName(), "Unlock");
 		}
 
 		return 0;
@@ -806,6 +847,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (pFile != NULL)
 			fclose(pFile);
 
+		exitBinWindows(gupParams.getClassName());
+
 		return -1;
 	}
 	catch (...)
@@ -815,6 +858,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (pFile != NULL)
 			fclose(pFile);
+
+		exitBinWindows(gupParams.getClassName());
 
 		return -1;
 	}
