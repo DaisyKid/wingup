@@ -611,21 +611,22 @@ void exitBinWindows(const string& binWindowsClassName)
 	}
 }
 
-void sendMessageToBin(const string& binWindowsClassName, const string& strData)
+void sendMessageToBinWindows(const string& binWindowsClassName, const string& data)
 {
 	if (!binWindowsClassName.empty())
 	{
 		HWND hWnd = ::FindWindowExA(NULL, NULL, binWindowsClassName.c_str(), NULL);
 
 		// notify the process of binary to update
+		// assume only one such process
 		if (hWnd)
 		{
-			char* buffer = new char[strData.size() + 1];
-			strcpy_s(buffer, strData.size() + 1, strData.c_str());
+			char* buffer = new char[data.size() + 1];
+			strcpy_s(buffer, data.size() + 1, data.c_str());
 
 			COPYDATASTRUCT cds;
 			cds.dwData = IDM_UPDATE_CHECK_MESSAGE;
-			cds.cbData = static_cast<DWORD>(strData.size() + 1);
+			cds.cbData = static_cast<DWORD>(data.size() + 1);
 			cds.lpData = static_cast<PVOID>(buffer);
 
 			::SendMessage(hWnd, WM_COPYDATA, NULL, (LPARAM)&cds);
@@ -707,10 +708,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (!getUpdateInfoSuccessful)
 		{
-			string getUpdateInfoFail = "Get the update info fails so exit the main program.";
-			::MessageBoxA(NULL, getUpdateInfoFail.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
-
-			exitBinWindows(gupParams.getClassName());
+			sendMessageToBinWindows(gupParams.getClassName(), "Fail to get the update info.");
 			return -1;
 		}
 
@@ -738,10 +736,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (need2BeForceUpdated)
 		{
-			sendMessageToBin(gupParams.getClassName(), "Lock");
+			sendMessageToBinWindows(gupParams.getClassName(), "Need to be force updated.");
 
 			// Force to update and pop a box to notify
-			string forceUpdate = "A mandatory update is detected. Do not interrupt the upgrade process, or the program will exit.";
+			string forceUpdate = "Start a mandatory update. Please do not interrupt the upgrade process.";
 			::MessageBoxA(NULL, forceUpdate.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
 		}
 		else if (need2BeUpdated)
@@ -780,7 +778,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 				return 0;
 			}
 		}
-		
+
 		//
 		// Download executable bin
 		//
@@ -791,8 +789,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		dlDest += ::PathFindFileNameA(gupDlInfo.getDownloadLocation().c_str());
 
         char *ext = ::PathFindExtensionA(gupDlInfo.getDownloadLocation().c_str());
-        if (strcmp(ext, ".exe") != 0)
-            dlDest += ".exe";
+        if (strcmp(ext, ".msi") != 0)
+            dlDest += ".msi";
 
 		dlFileName = ::PathFindFileNameA(gupDlInfo.getDownloadLocation().c_str());
 
@@ -805,13 +803,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (!dlSuccessful)
 		{
-			if (need2BeForceUpdated)
-			{
-				exitBinWindows(gupParams.getClassName());
-			}
+			// when need2BeForceUpdated is true, the bin windows has already been blocked
 			return -1;
 		}
-
 
 		//
 		// Run executable bin
@@ -826,16 +820,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (!installSuccessful)
 		{
-			if (need2BeForceUpdated)
-			{
-				exitBinWindows(gupParams.getClassName());
-			}
+			// when need2BeForceUpdated is true, the bin windows has already been blocked
 			return -1;
-		}
-
-		if (need2BeForceUpdated)
-		{
-			sendMessageToBin(gupParams.getClassName(), "Unlock");
 		}
 
 		return 0;
@@ -847,7 +833,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (pFile != NULL)
 			fclose(pFile);
 
-		exitBinWindows(gupParams.getClassName());
+		sendMessageToBinWindows(gupParams.getClassName(), ex.what());
 
 		return -1;
 	}
@@ -859,7 +845,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (pFile != NULL)
 			fclose(pFile);
 
-		exitBinWindows(gupParams.getClassName());
+		sendMessageToBinWindows(gupParams.getClassName(), "Unknown Exception in winup.");
 
 		return -1;
 	}

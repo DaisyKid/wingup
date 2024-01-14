@@ -85,7 +85,7 @@ private:
 
 class GupDownloadInfo : public XMLTool {
 public:
-	GupDownloadInfo() : _updateVersion(""), _updateLocation("") {};
+	GupDownloadInfo() : _need2BeUpdated(false), _need2BeForceUpdated(false), _updateVersion(""), _updateLocation("") {};
 	GupDownloadInfo(const char * xmlString);
 	
 	const std::string & getVersion() const { return _updateVersion;};
