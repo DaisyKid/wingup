@@ -23,6 +23,7 @@ using namespace std;
 
 GupParameters::GupParameters(const char * xmlFileName)
 {
+	_xmlFileName = xmlFileName;
 	_xmlDoc.LoadFile(xmlFileName);
 
 	TiXmlNode *root = _xmlDoc.FirstChild("GUPInput");
@@ -183,6 +184,14 @@ GupParameters::GupParameters(const char * xmlFileName)
 				_softwareIcon = uaVal;
 		}
 	}
+}
+
+void GupParameters::updateVersionInFile(const char* currentVersion)
+{
+	setCurrentVersion(currentVersion);
+
+	if (_xmlDoc.SaveFile("_xmlFileName"))
+		throw exception("Fail to update version in gup.xml.");
 }
 
 GupDownloadInfo::GupDownloadInfo(const char * xmlString) : _updateVersion(""), _updateLocation("")

@@ -824,6 +824,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 			return -1;
 		}
 
+		//
+		// Update the version info into gup.xml
+		//
+		std::string updatedVersion = gupDlInfo.getVersion();
+		gupParams.updateVersionInFile(updatedVersion.c_str());
+
 		return 0;
 
 	} catch (exception ex) {

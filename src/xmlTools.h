@@ -52,8 +52,10 @@ public:
 	};
 	bool isSilentMode() const {return _isSilentMode;};
 	bool isMessageBoxModal() const { return _isMessageBoxModal; };
+	void updateVersionInFile(const char* currentVersion);
 
 private:
+	std::string _xmlFileName;
 	std::string _currentVersion;
 	std::string _param;
 	std::string _infoUrl;
