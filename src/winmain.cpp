@@ -26,6 +26,14 @@
 #include "xmlTools.h"
 #define CURL_STATICLIB
 #include "../curl/include/curl/curl.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/spdlog.h"
+#include "spdlog/cfg/env.h"   // support for loading levels from the environment variable
+#include "spdlog/fmt/ostr.h"  // support for user defined types
+
+#if defined _M_X64 && defined(_MSC_VER) && (_MSC_VER >= 1921)
+#pragma comment(lib, "../input/spdlog/lib/spdlog.lib")
+#endif
 
 using namespace std;
 
@@ -263,7 +271,7 @@ static size_t getDownloadData(unsigned char *data, size_t size, size_t nmemb, FI
 	return len;
 };
 
-static size_t ratio = 0;
+static size_t ratioInProcess = 0;
 
 static size_t setProgress(HWND, double t, double d, double, double)
 {
@@ -275,22 +283,22 @@ static size_t setProgress(HWND, double t, double d, double, double)
 	{
 		while (stopDL)
 			::Sleep(1000);
-		size_t step = size_t(d * 100.0 / t - ratio);
+		size_t step = size_t(d * 100.0 / t - ratioInProcess);
 
 		// Looks like sometime curl is not giving proper data, so workaround
 		// Issue has been reported for Notepad++ (#4666 and #4069)
 		size_t ratioTemp = size_t(d * 100.0 / t);
 		if (ratioTemp <= 100)
-			ratio = ratioTemp;
+			ratioInProcess = ratioTemp;
 
 		SendMessage(hProgressBar, PBM_SETSTEP, (WPARAM)step, 0);
 		SendMessage(hProgressBar, PBM_STEPIT, 0, 0);
 
 		char percentage[128];
-		sprintf(percentage, "Downloading %s: %Iu %%", dlFileName.c_str(), ratio);
+		sprintf(percentage, "Downloading %s: %Iu %%", dlFileName.c_str(), ratioInProcess);
 		::SetWindowTextA(hProgressDlg, percentage);
 
-		if (ratio == 100)
+		if (ratioInProcess == 100)
 		{
 			SendMessage(hProgressDlg, WM_COMMAND, IDOK, 0);
 			isDialogClosed = true;
@@ -638,6 +646,10 @@ void sendMessageToBinWindows(const string& binWindowsClassName, const string& da
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 {
+	// Create a file rotating logger with 50mb size max and 10 rotated files.
+	std::shared_ptr<spdlog::logger> logger = spdlog::rotating_logger_mt("gup", "logs/gup.log", 1048576 * 50, 10);
+	spdlog::flush_every(std::chrono::seconds(1));
+
 	bool isSilentMode = false;
 	FILE *pFile = NULL;
 
@@ -709,6 +721,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (!getUpdateInfoSuccessful)
 		{
 			sendMessageToBinWindows(gupParams.getClassName(), "Fail to get the update info.");
+			logger->error("Fail to get update info.");
 			return -1;
 		}
 
@@ -716,6 +729,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		bool need2BeUpdated = gupDlInfo.doesNeed2BeUpdated();
 		bool need2BeForceUpdated = gupDlInfo.doesNeed2BeForceUpdated();
+
+		logger->info("Get the update info, version: {}, downloadLocation: {}, need2BeUpdated: {}, need2BeForceUpdated: {}", gupDlInfo.getVersion(), gupDlInfo.getDownloadLocation(), need2BeUpdated, need2BeForceUpdated);
 
 		if (!need2BeUpdated && !need2BeForceUpdated)
 		{
@@ -804,6 +819,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (!dlSuccessful)
 		{
 			// when need2BeForceUpdated is true, the bin windows has already been blocked
+			logger->error("Fail to download");
 			return -1;
 		}
 
@@ -821,6 +837,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (!installSuccessful)
 		{
 			// when need2BeForceUpdated is true, the bin windows has already been blocked
+			logger->error("Fail to install");
 			return -1;
 		}
 
@@ -829,6 +846,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		//
 		std::string updatedVersion = gupDlInfo.getVersion();
 		gupParams.updateVersionInFile(updatedVersion.c_str());
+
+		logger->info("Update version successfully.");
 
 		return 0;
 
@@ -839,6 +858,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (pFile != NULL)
 			fclose(pFile);
 
+		logger->error(ex.what());
 		sendMessageToBinWindows(gupParams.getClassName(), ex.what());
 
 		return -1;

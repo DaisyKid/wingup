@@ -190,7 +190,23 @@ void GupParameters::updateVersionInFile(const char* currentVersion)
 {
 	setCurrentVersion(currentVersion);
 
-	if (_xmlDoc.SaveFile("_xmlFileName"))
+	_xmlDoc.LoadFile(_xmlFileName.c_str());
+
+	TiXmlNode* root = _xmlDoc.FirstChild("GUPInput");
+	if (!root)
+		throw exception("It's not a valid GUP input xml.");
+
+	TiXmlNode* versionNode = root->FirstChildElement("Version");
+	if (versionNode)
+	{
+		TiXmlNode* n = versionNode->FirstChild();
+		if (n)
+		{
+			n->ToText()->SetValue(currentVersion);
+		}
+	}
+
+	if (!_xmlDoc.SaveFile(_xmlFileName.c_str()))
 		throw exception("Fail to update version in gup.xml.");
 }
 
