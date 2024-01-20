@@ -31,10 +31,6 @@
 #include "spdlog/cfg/env.h"   // support for loading levels from the environment variable
 #include "spdlog/fmt/ostr.h"  // support for user defined types
 
-#if defined _M_X64 && defined(_MSC_VER) && (_MSC_VER >= 1921)
-#pragma comment(lib, "../input/spdlog/lib/spdlog.lib")
-#endif
-
 using namespace std;
 
 HINSTANCE hInst;
