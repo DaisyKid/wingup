@@ -18,11 +18,16 @@
 */
 
 #include <stdint.h>
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <string>
 #include <commctrl.h>
 #include "resource.h"
 #include <shlwapi.h>
+#include <ShellAPI.h>
+#include <regex>
 #include "xmlTools.h"
 #define CURL_STATICLIB
 #include "../curl/include/curl/curl.h"
@@ -76,6 +81,9 @@ gup [-verbose] [-vVERSION_VALUE] [-pCUSTOM_PARAM]\r\
 std::string thirdDoUpdateDlgButtonLabel;
 
 static const UINT_PTR IDM_UPDATE_CHECK_MESSAGE = 1002;
+
+// Create a file rotating logger with 50mb size max and 10 rotated files.
+std::shared_ptr<spdlog::logger> logger = spdlog::rotating_logger_mt("gup", "logs/gup.log", 1048576 * 50, 10);
 
 class CUXHelper
 {
@@ -478,6 +486,75 @@ bool downloadBinary(string urlFrom, string destTo, pair<string, int> proxyServer
 	return true;
 }
 
+// Replacing domain name with IP in the URL because the domain is not ICP registered,
+// then the domain name cannot be directly resolved to an IP address.
+void updateUrl(std::string& url)
+{
+	std::regex regex_pattern("(http|https)://([a-zA-Z0-9.-]+):(\\d+)");
+	std::smatch match;
+	if (std::regex_match(url, match, regex_pattern))
+	{
+		logger->info("Match. Url={}, domain={}, port={}", url, match[2], match[3]);
+	}
+	else
+	{
+		logger->error("No match.");
+		return;
+	}
+
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	{
+		logger->error("Failed to initialize Winsock.");
+		return;
+	}
+
+	std::string strDomain = match[2];
+	const char* domain = strDomain.c_str();
+
+	struct addrinfo hints, * result = nullptr;
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	int res = getaddrinfo(domain, nullptr, &hints, &result);
+	if (res != 0)
+	{
+		logger->error("Failed to resolve domain, error = {}", res);
+		WSACleanup();
+		return;
+	}
+
+	for (auto* addr = result; addr != nullptr; addr = addr->ai_next)
+	{
+		if (addr->ai_family == AF_INET)
+		{
+			char ip[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in*>(addr->ai_addr)->sin_addr, ip, sizeof(ip));
+			url = std::string(match[1]) + "://" + std::string(ip) + ":" + std::string(match[3]);
+			logger->info("IPv4 Address: {}", ip);
+			logger->info("New IPv4 url: {}", url);
+		}
+		else if (addr->ai_family == AF_INET6)
+		{
+			char ip[INET6_ADDRSTRLEN];
+			inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6*>(addr->ai_addr)->sin6_addr, ip, sizeof(ip));
+			url = std::string(match[1]) + "://" + std::string(ip) + ":" + std::string(match[3]);
+			logger->info("IPv6 Address: {}", ip);
+			logger->info("New IPv6 url: {}", url);
+		}
+		else
+		{
+			logger->error("Failed to convert to ip");
+			return;
+		}
+		break;
+	}
+
+	freeaddrinfo(result);
+	WSACleanup();
+}
+
 bool getUpdateInfo(string &info2get, const GupParameters& gupParams, const GupExtraOptions& proxyServer, const string& customParam, const string& version)
 {
 	char errorBuffer[CURL_ERROR_SIZE] = { 0 };
@@ -488,9 +565,12 @@ bool getUpdateInfo(string &info2get, const GupParameters& gupParams, const GupEx
 	CURLcode res = CURLE_FAILED_INIT;
 
 	curl = curl_easy_init();
+	std::string url = gupParams.getInfoLocation();
+	updateUrl(url);
+
 	if (curl)
 	{
-		std::string urlComplete = gupParams.getInfoLocation() + "?version=";
+		std::string urlComplete = url + "/params?version=";
 		if (!version.empty())
 			urlComplete += version;
 		else
@@ -642,8 +722,6 @@ void sendMessageToBinWindows(const string& binWindowsClassName, const string& da
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 {
-	// Create a file rotating logger with 50mb size max and 10 rotated files.
-	std::shared_ptr<spdlog::logger> logger = spdlog::rotating_logger_mt("gup", "logs/gup.log", 1048576 * 50, 10);
 	spdlog::flush_every(std::chrono::seconds(1));
 
 	bool isSilentMode = false;
@@ -716,8 +794,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		if (!getUpdateInfoSuccessful)
 		{
-			sendMessageToBinWindows(gupParams.getClassName(), "Fail to get the update info.");
-			logger->error("Fail to get update info.");
+			sendMessageToBinWindows(gupParams.getClassName(), "Failed to get the update info.");
+			logger->error("Failed to get update info.");
 			return -1;
 		}
 
@@ -815,7 +893,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (!dlSuccessful)
 		{
 			// when need2BeForceUpdated is true, the bin windows has already been blocked
-			logger->error("Fail to download");
+			logger->error("Failed to download");
 			return -1;
 		}
 
@@ -833,7 +911,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		if (!installSuccessful)
 		{
 			// when need2BeForceUpdated is true, the bin windows has already been blocked
-			logger->error("Fail to install");
+			logger->error("Failed to install");
 			return -1;
 		}
 
